@@ -145,7 +145,7 @@ class Worker(QObject):
         coords = map_oge_ege[method][self.oge_ege]
         cropped = img_array[coords[0]:coords[1], coords[2]:coords[3]]
         if model == "Easy":
-            output = ''.join(reader.readtext(cropped, detail=0, paragraph=False, decoder="beamsearch", beamWidth=6))
+            output = ''.join(reader.readtext(cropped, detail=0, paragraph=False, decoder="beamsearch", beamWidth=15))
         else:
             results = list(ocr.predict(cropped))
             output = ' '.join(sorted(results[0]["rec_texts"], key=len))

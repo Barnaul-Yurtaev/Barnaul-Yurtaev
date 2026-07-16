@@ -12,12 +12,12 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Обработка файлов")
-        self.resize(700, 250)
+        self.resize(700, 210)
 
         self.worker_thread = None
         self.worker = None
         self.model_name = "Easy"
-        self.db_path = r"C:\Users\79831\Desktop\Python_projects\Подарок папе\print-blanks.xlsm"
+        self.db_path = r"C:\Users\user\Desktop\OCR Project\print-blanks.xlsm"
 
         self.init_ui()
 
@@ -86,7 +86,7 @@ class MainWindow(QWidget):
 
     def open_settings_dialog(self):
         """Открывает диалог настроек"""
-        dialog = SettingsDialog(self, db_name=self.db_path)
+        dialog = SettingsDialog(self, db_name=self.db_path, model_name=self.model_name)
         if dialog.exec() == QDialog.Accepted:
             # Пока сохраняем путь к базе (можно использовать в будущем)
             self.db_path = dialog.database_path.text()
@@ -139,6 +139,7 @@ class MainWindow(QWidget):
         self.worker.statusMessage.connect(self.status_label.setText)
         self.worker.finished.connect(self.on_processing_finished)
         self.worker.errorOccurred.connect(self.show_error)
+        
 
         self.worker_thread.started.connect(self.worker.process)
         self.worker.finished.connect(self.worker_thread.quit)
@@ -147,10 +148,10 @@ class MainWindow(QWidget):
 
         self.worker_thread.start()
 
-    def on_processing_finished(self):
+    def on_processing_finished(self, count):
         """Слот вызывается после завершения работы Worker"""
         self.progress_bar.hide()
-        self.status_label.setText("Обработка завершена")
+        self.status_label.setText(f"Обработка завершена. Обработано {count} работ.")
         self.process_button.setEnabled(True)
 
     def show_error(self, msg):

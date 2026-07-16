@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 )
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent=None, db_name=""):
+    def __init__(self, parent=None, db_name="", model_name=""):
         super().__init__(parent)
         self.setWindowTitle("Настройки приложения")
         self.resize(600, 200)
@@ -29,7 +29,10 @@ class SettingsDialog(QDialog):
         layout.addWidget(QLabel("Укажите модель для обработки:"))
         self.Easy_button = QRadioButton("Easy OCR")
         self.Paddle_button = QRadioButton("PaddlePaddle OCR")
-        self.Easy_button.setChecked(True)
+        if model_name == "Easy":
+            self.Easy_button.setChecked(True)
+        elif model_name == "Paddle":
+            self.Paddle_button.setChecked(True)
         layout.addWidget(self.Easy_button)
         layout.addWidget(self.Paddle_button)
 

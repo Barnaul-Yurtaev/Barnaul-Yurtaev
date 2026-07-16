@@ -30,7 +30,7 @@ CONFIDENTIAL_COORDS = {
     "ОГЭ": (2050, 1500),
     "ЕГЭ": (2100, 1800)
 }
-
+confidential_flag = True
 subject_codes = {"рус": "01",
                  "мат": "02",
                  "физ": "03",
@@ -44,7 +44,7 @@ subject_codes = {"рус": "01",
                  "инф": "25"
                 }
 subject_codes2 = {
-    0: "неизвестный",
+    0: "неизвестный_предмет",
     1: "рус",
     2: "мат",
     3: "физ",
@@ -97,9 +97,8 @@ def into_one_PDF(image_paths: list, output_path: str) -> None:
 class Worker(QObject):
     progressChanged = Signal(int)       # 0..100
     statusMessage = Signal(str)         # сообщение пользователю
-    finished = Signal()                 # работа завершена
-    errorOccurred = Signal(str)         # сообщение об ошибке
-
+    finished = Signal(int)              # работа завершена
+    errorOccurred = Signal(str)         # сообщение об ошибке 
     def __init__(self, source_folder, output_folder, oge_ege, conf_image_path, model, database):
         super().__init__()
         self.source_folder = source_folder
@@ -117,10 +116,10 @@ class Worker(QObject):
 
 
     def reading_and_writing(self, img, method="Номер КИМ", model="Easy"):
-        """Распознавание области (использует self.result, self.variants, self.subjects)"""
+        """Распознавание области (используют self.result, self.variants, self.subjects)"""
         map_oge_ege = {
             "Номер КИМ": {
-                "ОГЭ": [760, 900, 100, 1000],
+                "ОГЭ": [760, 900, 120, 1000],
                 "ЕГЭ": [760, 900, 150, 1000]
             },
             "Предмет 1 страница": {
@@ -145,7 +144,7 @@ class Worker(QObject):
         coords = map_oge_ege[method][self.oge_ege]
         cropped = img_array[coords[0]:coords[1], coords[2]:coords[3]]
         if model == "Easy":
-            output = ''.join(reader.readtext(cropped, detail=0, paragraph=False, decoder="beamsearch", beamWidth=15))
+            output = ''.join(reader.readtext(cropped, detail=0, paragraph=False, decoder="beamsearch", beamWidth=6))
         else:
             results = list(ocr.predict(cropped))
             output = ' '.join(sorted(results[0]["rec_texts"], key=len))
@@ -195,8 +194,6 @@ class Worker(QObject):
 
         # Создание выходной папки
         os.makedirs(self.output_folder, exist_ok=True)
-        # Создание папки с ошибочно определенными номерами КИМ
-        os.makedirs(os.path.join(self.output_folder, "wrong_kim_numbers"), exist_ok=True)
 
         try:
             # Сбор всех файлов
@@ -209,7 +206,7 @@ class Worker(QObject):
             total_files = len(files_to_process)
             if total_files == 0:
                 self.errorOccurred.emit("В выбранной папке нет изображений.")
-                self.finished.emit()
+                self.finished.emit(0)
                 return
 
             # Обработка каждого файла
@@ -246,14 +243,16 @@ class Worker(QObject):
                             self.subjects[numbers_id] = subject_id
 
                     else:
-                        # Вставка конфиденциальной плашки на первой странице
-                        main_img = Image.open(file_path)
-                        insert_img = Image.open(self.conf_image_path)
-                        coords = CONFIDENTIAL_COORDS[self.oge_ege]
-                        main_img.paste(insert_img, coords)
-                        main_img.save(file_path)
-                        insert_img.close()
-                        main_img.close()
+                        if int(numbers_id) in list(real_numbers_file.kim) and confidential_flag:
+                            # Вставка конфиденциальной плашки на первой странице
+                            main_img = Image.open(file_path)
+                            insert_img = Image.open(self.conf_image_path)
+                            coords = CONFIDENTIAL_COORDS[self.oge_ege]
+                            main_img.paste(insert_img, coords)
+                            main_img.save(file_path)
+                            insert_img.close()
+                            main_img.close()
+                            confidential_flag = True
 
                         self.result[numbers_id] = [file_path]
                         self.variants[numbers_id] = [variant]
@@ -261,7 +260,7 @@ class Worker(QObject):
                         # Распознаём предмет на первой странице
                         subject_id, _ = self.reading_and_writing(file_path, method = "Предмет 1 страница")
                         subject_id = "".join(subject_id)
-                        self.subjects[numbers_id] = subject_id if len(subject_id) == 2 else ("0" + subject_id)
+                        self.subjects[numbers_id] = ("0"*(2-len(subject_id))+subject_id) if len(subject_id) <= 2 else "0" 
 
                         # Закомментировано до востребования - определение кода предмета по буквам вместо цифр
                         # if self.subjects.get(numbers_id, "") == "":
@@ -276,16 +275,20 @@ class Worker(QObject):
                         #   subject_id = subject_codes[max(overlap, key=overlap.get)]
                         #     self.subjects[numbers_id] = subject_id
                     if not numbers_id == "" and not int(numbers_id) in list(real_numbers_file.kim):
+                        os.makedirs(os.path.join(self.output_folder, "wrong_kim_numbers"), exist_ok=True)
                         self.wrong_numbers.append({"file": os.path.basename(file_path), "numbers_id": int(numbers_id), "variant": int(variant)})
                         img = Image.open(file_path)
                         img.save(os.path.join(self.output_folder, "wrong_kim_numbers", file))
+                        confidential_flag = False
                 except Exception as e:
                     self.errorOccurred.emit(f"Ошибка в файле {file_path}: {e}")
                     continue
 
             # Запись xlsx файла с неверными КИМ
-            wrong_numbers_data = pd.DataFrame(self.wrong_numbers)
-            wrong_numbers_data.to_excel(f"{self.output_folder}/wrong_kim_numbers/wrong_kim_numbers.xlsx")
+            # Создание папки с ошибочно определенными номерами КИМ
+            if self.wrong_numbers:
+                wrong_numbers_data = pd.DataFrame(self.wrong_numbers)
+                wrong_numbers_data.to_excel(f"{self.output_folder}/wrong_kim_numbers/wrong_kim_numbers.xlsx")
 
             # Сборка PDF для каждого номера КИМ
             for num_id, images in self.result.items():
@@ -337,7 +340,8 @@ class Worker(QObject):
                         continue
             self.statusMessage.emit("Готово. Файлы сохранены.")
 
+
         except Exception as e:
             self.errorOccurred.emit(f"Критическая ошибка: {e}")
         finally:
-            self.finished.emit()
+            self.finished.emit(len(self.result))

@@ -119,8 +119,8 @@ class Worker(QObject):
         """Распознавание области (используют self.result, self.variants, self.subjects)"""
         map_oge_ege = {
             "Номер КИМ": {
-                "ОГЭ": [760, 900, 120, 1000],
-                "ЕГЭ": [760, 900, 150, 1000]
+                "ОГЭ": [750, 1000, 300, 1000],
+                "ЕГЭ": [740, 1000, 300, 900]
             },
             "Предмет 1 страница": {
                 "ОГЭ": [750, 900, 1150, 1400],
@@ -145,10 +145,10 @@ class Worker(QObject):
         cropped = img_array[coords[0]:coords[1], coords[2]:coords[3]]
         if model == "Easy":
             output = ''.join(reader.readtext(cropped, detail=0, paragraph=False, decoder="beamsearch", beamWidth=6))
-        else:
+        elif model == "Paddle":
             results = list(ocr.predict(cropped))
             output = ' '.join(sorted(results[0]["rec_texts"], key=len))
-        print(output)
+        print(output, method)
 
         if output.strip() == '':
             print(f'Пустой результат распознавания в файле: {img if isinstance(img, str) else "image"}')
@@ -165,11 +165,8 @@ class Worker(QObject):
             numbers = re.findall(r'\d', output)
             letters = re.findall(r'[А-Яа-яЁё]', output)
             if method == "Номер КИМ":
-                if len(numbers) >= 7:
-                    numbers_id = ''.join(numbers[-6:])
-                    variant = numbers[-7]
-                elif len(numbers) == 6:
-                    numbers_id = ''.join(numbers[-6:])
+                if len(numbers) >= 6:
+                    numbers_id = ''.join(numbers[:6])
                     variant = '0'
                 else:
                     if self.result:
@@ -188,6 +185,8 @@ class Worker(QObject):
 
     def process(self):
         """Основной метод обработки, вызывается в отдельном потоке"""
+
+        global confidential_flag
 
         real_numbers = self.database_path
         real_numbers_file = pd.read_excel(real_numbers, sheet_name = "bas", usecols = [1,2])
